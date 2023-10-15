@@ -1,3 +1,5 @@
+import dotenv from "dotenv";
+dotenv.config();
 import express from "express";
 import bodyParser from "body-parser";
 import ejs from "ejs";
@@ -14,6 +16,12 @@ const userschema =new mongoose.Schema({
   email:String,
   password:String
 })
+
+//encryption
+const secret=process.env.SECRET
+userschema.plugin(encrypt,{secret:secret, encryptedFields:["password"]})
+
+
 const User=mongoose.model("User",userschema)
 
 
