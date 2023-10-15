@@ -4,7 +4,8 @@ import express from "express";
 import bodyParser from "body-parser";
 import ejs from "ejs";
 import mongoose  from "mongoose";
-import md5 from "MD5";
+import bcrypt from "bcrypt";
+const SaltRound=10;
 
 const port = 3000;
 
@@ -39,26 +40,29 @@ app.get("/register", (req, res) => {
 });
 
 app.post("/register", (req,res) => {
-  const username = req.body.username
-  const password = md5(req.body.password)
-
-  const user=new User({
-    email:username,
-    password:password
+  bcrypt.hash(req.body.password,SaltRound,(err,hash)=> {
+    const username = req.body.username
+    const password = hash
+  
+    const user=new User({
+      email:username,
+      password:password
+    })
+  
+    user.save()
+    .then(()=> {
+      res.render("secrets")
+    })
+    .catch((err)=> {
+      console.log(err)
+    })
   })
 
-  user.save()
-  .then(()=> {
-    res.render("secrets")
-  })
-  .catch((err)=> {
-    console.log(err)
-  })
 })
 
 app.post("/login", (req, res) => {
   const username = req.body.username;
-  const password = md5(req.body.password);
+  const password = req.body.password
 
   User.findOne({ email: username })
     .then((foundeduser) => {
@@ -66,11 +70,14 @@ app.post("/login", (req, res) => {
         console.log("User not found for username: " + username);
         res.send("User not found " +username);
       } else {
-        if (foundeduser.password === password) {
-          res.render("secrets");
-        } else {
-          res.send("Incorrect password");
-        }
+        bcrypt.compare(password,foundeduser.password,function(err,responds){
+          if(responds===true){
+            res.render("secrets");
+          }
+          else {
+            res.send("Incorrect password");
+          }
+        })
       }
     })
     .catch((err) => {
