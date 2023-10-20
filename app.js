@@ -3,29 +3,46 @@ dotenv.config();
 import express from "express";
 import bodyParser from "body-parser";
 import ejs from "ejs";
-import mongoose  from "mongoose";
-import bcrypt from "bcrypt";
-const SaltRound=10;
+import mongoose from "mongoose";
+import session from "express-session";
+import passport from "passport";
+import LocalStrategy from "passport-local"; // Corrected the import
+import passportLocalMongoose from "passport-local-mongoose"; // Corrected the import
 
 const port = 3000;
 
 const app = express();
 
-mongoose.connect("mongodb://127.0.0.1/userDB")
-
-const userschema =new mongoose.Schema({
-  email:String,
-  password:String
-})
-
-
-const User=mongoose.model("User",userschema)
-
-
 app.use(express.static("public"));
-app.set("view engine", 'ejs'); // You had a space between "view engine" and "'ejs'"
+app.set("view engine", "ejs"); // Corrected the syntax
+app.use(bodyParser.urlencoded({ extended: true }));
 
-app.use(bodyParser.urlencoded({ extended: true } )); // Fixed the syntax error here
+app.use(session({
+  secret: "the secret small", // Corrected the typo
+  resave: false,
+  saveUninitialized: false,
+}));
+
+app.use(passport.initialize());
+app.use(passport.session());
+
+mongoose.connect("mongodb://127.0.0.1/userDB");
+
+const userSchema = new mongoose.Schema({ // Renamed to userSchema for consistency
+  email: String,
+  password: String,
+});
+
+userSchema.plugin(passportLocalMongoose);
+
+const User = mongoose.model("User", userSchema);
+
+passport.use(User.createStrategy());
+
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
+
+
 
 app.get("/", (req, res) => {
   res.render("home");
@@ -38,52 +55,52 @@ app.get("/login", (req, res) => {
 app.get("/register", (req, res) => {
   res.render("register");
 });
-
-app.post("/register", (req,res) => {
-  bcrypt.hash(req.body.password,SaltRound,(err,hash)=> {
-    const username = req.body.username
-    const password = hash
-  
-    const user=new User({
-      email:username,
-      password:password
-    })
-  
-    user.save()
-    .then(()=> {
-      res.render("secrets")
-    })
-    .catch((err)=> {
-      console.log(err)
-    })
-  })
-
+app.get("/secrets",(req,res)=> {
+  if(req.isAuthenticated){
+    res.render("secrets")
+  }else{
+    res.redirect("/login")
+  }
 })
 
-app.post("/login", (req, res) => {
-  const username = req.body.username;
-  const password = req.body.password
+app.post("/register", (req, res) => {
+  // Create a new user with the email and password
+  User.register(new User({username: req.body.username }), req.body.password, (err, user) => {
+    if (err) {
+      console.error(err);
+      res.render("register"); 
+    } else {
+      passport.authenticate("local")(req, res, () => {
+        res.redirect("/secrets");
+      });
+    }
+  });
+});
 
-  User.findOne({ email: username })
-    .then((foundeduser) => {
-      if (!foundeduser) {
-        console.log("User not found for username: " + username);
-        res.send("User not found " +username);
-      } else {
-        bcrypt.compare(password,foundeduser.password,function(err,responds){
-          if(responds===true){
-            res.render("secrets");
-          }
-          else {
-            res.send("Incorrect password");
-          }
-        })
-      }
+app.get("/logout",(req,res)=> {
+  req.logout((err)=>{
+    if(err){
+      console.log(err)
+    }
+  });
+  res.redirect("/")
+})
+
+
+app.post("/login", (req, res) => {
+ const user=new User({
+  username:req.body.username,
+  password:req.body.password
+ })
+ req.logIn(user,(err)=> {
+  if(err) {
+    console.log(err)
+  }else{
+    passport.authenticate("local")(req,res,()=> {
+      res.redirect("/secrets");
     })
-    .catch((err) => {
-      console.log(err);
-      res.send("An error occurred.");
-    });
+  }
+ })
 });
 
 app.listen(port, () => {
